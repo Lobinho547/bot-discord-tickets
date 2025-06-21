@@ -214,16 +214,30 @@ async function handleButton(interaction) {
     if (customId === 'confirm_assume') {
         if (!isStaff) return interaction.reply({ content: '❌ Ação não permitida.', ephemeral: true });
         
-        const originalCreatorId = channel.name.split('-').pop();
-        const newName = `${ticketType.emoji}・${user.username.toLowerCase()}-${originalCreatorId}`;
-        await channel.setName(newName);
+        // Deferir a atualização para evitar timeout
+        await interaction.deferUpdate();
 
-        await channel.setTopic(`Ticket assumido por ${user.username}.`);
-        await interaction.update({ content: `✅ Você assumiu este ticket. O canal foi renomeado para: \`${newName}\``, embeds: [], components: [] });
+        // Limpar o nome de usuário para ser seguro para o nome do canal
+        const sanitizedUsername = user.username.toLowerCase().replace(/[^a-z0-9-]/g, '') || 'staff';
+
+        const originalCreatorId = channel.name.split('-').pop();
+        const newName = `${ticketType.emoji}・${sanitizedUsername}-${originalCreatorId}`;
+        
+        try {
+            await channel.setName(newName);
+            await channel.setTopic(`Ticket assumido por ${user.username}.`);
+            await interaction.editReply({ content: `✅ Você assumiu este ticket. O canal foi renomeado para: \`${newName}\``, embeds: [], components: [] });
+        } catch (e) {
+            console.error("Erro ao assumir ticket:", e);
+            await interaction.editReply({ content: '❌ Erro ao assumir o ticket. Verifique as permissões do bot.', embeds: [], components: [] });
+        }
     }
 
     if (customId === 'confirm_notify') {
         if (!isStaff) return interaction.reply({ content: '❌ Ação não permitida.', ephemeral: true });
+
+        // Deferir a atualização para evitar timeout
+        await interaction.deferUpdate();
         
         const originalCreatorId = channel.name.split('-').pop();
         const creator = await client.users.fetch(originalCreatorId);
@@ -232,9 +246,9 @@ async function handleButton(interaction) {
             const embed = new EmbedBuilder().setTitle('🔔 Notificação de Ticket').setDescription(`Olá! Um staff está cuidando do seu ticket e te enviou uma notificação.`);
             const button = new ButtonBuilder().setLabel('Ir para o Ticket').setStyle(ButtonStyle.Link).setURL(channel.url);
             await creator.send({ embeds: [embed], components: [new ActionRowBuilder().addComponents(button)] });
-            await interaction.update({ content: '✅ Usuário notificado com sucesso!', embeds: [], components: [] });
+            await interaction.editReply({ content: '✅ Usuário notificado com sucesso!', embeds: [], components: [] });
         } catch (error) {
-            await interaction.update({ content: '❌ Não foi possível notificar o usuário. Ele pode ter desabilitado as DMs.', embeds: [], components: [] });
+            await interaction.editReply({ content: '❌ Não foi possível notificar o usuário. Ele pode ter desabilitado as DMs.', embeds: [], components: [] });
         }
     }
     
