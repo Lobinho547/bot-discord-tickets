@@ -2,9 +2,6 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 const { createTranscript } = require('discord-html-transcripts');
 const { put } = require('@vercel/blob');
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
 
 // --- Verificação de Variáveis de Ambiente ---
 const requiredEnvVars = [
@@ -14,7 +11,8 @@ const requiredEnvVars = [
   'LOG_CHANNEL_ID',
   'TICKET_CATEGORY_ID',
   'STAFF_ROLE_ID',
-  'BLOB_READ_WRITE_TOKEN' // Token do Vercel Blob
+  'BLOB_READ_WRITE_TOKEN',
+  'APP_URL'
 ];
 
 const missingEnvVars = requiredEnvVars.filter(v => !process.env[v]);
@@ -22,7 +20,7 @@ const missingEnvVars = requiredEnvVars.filter(v => !process.env[v]);
 if (missingEnvVars.length > 0) {
   console.error(`❌ Erro: Variáveis de ambiente faltando no arquivo .env: ${missingEnvVars.join(', ')}`);
   console.error('📋 Por favor, configure o arquivo .env com todas as variáveis necessárias.');
-  process.exit(1); // Encerra o processo
+  process.exit(1);
 }
 // --- Fim da Verificação ---
 
@@ -39,42 +37,6 @@ const client = new Client({
 });
 
 client.commands = new Collection();
-
-// Configurar servidor Express para o frontend
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, '../public')));
-
-// Rota para servir o frontend
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'));
-});
-
-// Rota para obter transcript - AGORA USARÁ O LINK DIRETO DO VERCEL
-// Esta rota pode ser removida se o frontend buscar direto da URL do Vercel,
-// mas vamos manter para o caso de precisarmos de um proxy.
-app.get('/transcript/:id', async (req, res) => {
-    try {
-        // O ID agora seria o nome do arquivo no blob
-        const transcriptId = req.params.id;
-        // A URL pública é acessada diretamente, não precisa de proxy
-        // Redireciona para a URL pública do blob
-        const blobUrl = `https://<seu_vercel_app_url>/${transcriptId}`; // Placeholder
-        res.redirect(blobUrl);
-
-    } catch (error) {
-        console.error('Erro ao buscar transcript:', error);
-        res.status(500).json({ error: 'Erro interno do servidor' });
-    }
-});
-
-
-app.listen(PORT, () => {
-  console.log(`Servidor web rodando na porta ${PORT}`);
-});
 
 // Evento ready
 client.once('ready', () => {
@@ -360,23 +322,33 @@ async function fecharTicket(interaction) {
 
     // Upload para Vercel Blob
     const transcriptFileName = `transcripts/transcript-${channel.name}-${Date.now()}.html`;
-    const { url } = await put(transcriptFileName, transcript.attachment, {
+    const { url: blobUrl } = await put(transcriptFileName, transcript.attachment, {
       access: 'public',
       contentType: 'text/html',
     });
 
-    const publicUrl = url;
+    // Remove a barra final da APP_URL se ela existir, para evitar // na URL
+    const appUrl = process.env.APP_URL.replace(/\/$/, "");
+    // A URL agora aponta para a nova função /api/view
+    const publicUrl = `${appUrl}/api/view?url=${encodeURIComponent(blobUrl)}`;
 
     // Enviar log com o link do transcript
     const logChannel = interaction.guild.channels.cache.get(process.env.LOG_CHANNEL_ID);
     if (logChannel) {
       const logEmbed = new EmbedBuilder()
         .setTitle('🔒 Ticket Fechado')
-        .setDescription(`**Canal:** ${channel.name}\n**Fechado por:** ${user}\n**Transcript:** [Clique aqui para ver](${publicUrl})`)
+        .setDescription(`**Canal:** ${channel.name}\n**Fechado por:** ${user}`)
         .setColor('#ff0000')
         .setTimestamp();
 
-      await logChannel.send({ embeds: [logEmbed] });
+      const viewButton = new ButtonBuilder()
+        .setLabel('Ver Transcript')
+        .setStyle(ButtonStyle.Link)
+        .setURL(publicUrl);
+
+      const row = new ActionRowBuilder().addComponents(viewButton);
+
+      await logChannel.send({ embeds: [logEmbed], components: [row] });
     }
 
     // Deletar o canal
