@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const { fetch } = require('undici');
 
 module.exports = async (req, res) => {
     // Pega a URL do transcript da query string (ex: /api/view?url=...)
