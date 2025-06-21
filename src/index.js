@@ -298,39 +298,31 @@ async function handleButton(interaction) {
             const { url: blobUrl } = await put(transcriptFileName, transcript.attachment, {
                 access: 'public',
                 contentType: 'text/html',
-                addRandomSuffix: false,
-                cacheControlMaxAge: 30 * 24 * 60 * 60, // 30 dias
+                addRandomSuffix: false
             });
-
-            // Deletar o blob após 30 dias
-            setTimeout(async () => {
-                try {
-                    await del(blobUrl);
-                    console.log(`Transcript deletado: ${blobUrl}`);
-                } catch (delError) {
-                    console.error(`Erro ao deletar transcript ${blobUrl}:`, delError);
-                }
-            }, 30 * 24 * 60 * 60 * 1000); // 30 dias em milissegundos
             
-
             const appUrl = process.env.APP_URL.replace(/\/$/, "");
             const publicUrl = `${appUrl}/api/view?url=${encodeURIComponent(blobUrl)}`;
 
+            // Declarar o botão uma vez para ser reutilizado
+            const viewTranscriptButton = new ButtonBuilder().setLabel('Ver Transcript').setStyle(ButtonStyle.Link).setURL(publicUrl);
+            const row = new ActionRowBuilder().addComponents(viewTranscriptButton);
+
             // Enviar para o canal de logs específico do tipo de ticket
             const logChannel = await guild.channels.fetch(ticketType.log_channel_id).catch(() => null);
-            if (logChannel) {
+            // Verificação de segurança: O canal existe e é um canal de texto?
+            if (logChannel && logChannel.isTextBased()) {
                 const logEmbed = new EmbedBuilder().setTitle('🔒 Ticket Fechado').setDescription(`**Canal:** \`${channel.name}\`\n**Fechado por:** ${user}`).setColor('#ff0000');
-                const logButton = new ButtonBuilder().setLabel('Ver Transcript').setStyle(ButtonStyle.Link).setURL(publicUrl);
-                await logChannel.send({ embeds: [logEmbed], components: [new ActionRowBuilder().addComponents(logButton)] });
+                await logChannel.send({ embeds: [logEmbed], components: [row] });
             } else {
-                console.log(`Canal de log com ID ${ticketType.log_channel_id} não encontrado.`);
+                console.log(`AVISO: Canal de log com ID ${ticketType.log_channel_id} não foi encontrado ou não é um canal de texto.`);
             }
 
             // Enviar DM para o autor do ticket
             const creator = await client.users.fetch(originalCreatorId);
             try {
                 const dmEmbed = new EmbedBuilder().setTitle('Seu Ticket foi Fechado').setDescription('Obrigado por entrar em contato! Aqui está a transcrição da sua conversa.');
-                await creator.send({ embeds: [dmEmbed], components: [new ActionRowBuilder().addComponents(logButton)] });
+                await creator.send({ embeds: [dmEmbed], components: [row] });
             } catch (error) {
                 console.log(`Não foi possível enviar DM para o usuário ${creator.id}`);
             }
