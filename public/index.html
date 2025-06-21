@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Ticket Transcript Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            max-width: 800px;
+            width: 100%;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #7289da 0%, #5865f2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .search-section {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .search-input {
+            width: 100%;
+            max-width: 400px;
+            padding: 15px 20px;
+            border: 2px solid #e1e5e9;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            border-color: #7289da;
+            box-shadow: 0 0 0 3px rgba(114, 137, 218, 0.1);
+        }
+
+        .search-button {
+            background: linear-gradient(135deg, #7289da 0%, #5865f2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .search-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(114, 137, 218, 0.3);
+        }
+
+        .transcript-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            border: 1px solid #e1e5e9;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #7289da;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #fcc;
+            text-align: center;
+        }
+
+        .info {
+            background: #e3f2fd;
+            color: #1976d2;
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid #bbdefb;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .transcript-content {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .transcript-content img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        .transcript-content a {
+            color: #7289da;
+            text-decoration: none;
+        }
+
+        .transcript-content a:hover {
+            text-decoration: underline;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            background: #f8f9fa;
+            border-left: 4px solid #7289da;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            margin-right: 10px;
+            background: #7289da;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .username {
+            font-weight: 600;
+            color: #333;
+            margin-right: 10px;
+        }
+
+        .timestamp {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .message-content {
+            margin-left: 42px;
+            color: #333;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 10px;
+                max-height: 95vh;
+            }
+
+            .header {
+                padding: 20px;
+            }
+
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .search-button {
+                margin-top: 10px;
+                margin-left: 0;
+                width: 100%;
+                max-width: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎫 Discord Transcript Viewer</h1>
+            <p>Visualize transcripts de tickets do Discord</p>
+        </div>
+        
+        <div class="content">
+            <div class="info">
+                <strong>Como usar:</strong> Cole o ID do transcript na caixa de busca abaixo e clique em "Buscar Transcript"
+            </div>
+
+            <div class="search-section">
+                <input type="text" id="transcriptId" class="search-input" placeholder="Digite o ID do transcript..." />
+                <button onclick="loadTranscript()" class="search-button">Buscar Transcript</button>
+            </div>
+
+            <div id="transcriptContainer" class="transcript-container" style="display: none;">
+                <div id="loading" class="loading">Carregando transcript...</div>
+                <div id="error" class="error" style="display: none;"></div>
+                <div id="transcriptContent" class="transcript-content" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadTranscript() {
+            const transcriptId = document.getElementById('transcriptId').value.trim();
+            
+            if (!transcriptId) {
+                showError('Por favor, digite um ID de transcript válido.');
+                return;
+            }
+
+            const container = document.getElementById('transcriptContainer');
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const content = document.getElementById('transcriptContent');
+
+            // Mostrar container e loading
+            container.style.display = 'block';
+            loading.style.display = 'block';
+            error.style.display = 'none';
+            content.style.display = 'none';
+
+            try {
+                const response = await fetch(`/transcript/${transcriptId}`);
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error('Transcript não encontrado. Verifique se o ID está correto.');
+                    } else {
+                        throw new Error('Erro ao carregar transcript. Tente novamente.');
+                    }
+                }
+
+                const htmlContent = await response.text();
+                
+                // Esconder loading e mostrar conteúdo
+                loading.style.display = 'none';
+                content.innerHTML = htmlContent;
+                content.style.display = 'block';
+
+                // Aplicar estilos personalizados ao conteúdo
+                applyCustomStyles();
+
+            } catch (err) {
+                showError(err.message);
+            }
+        }
+
+        function showError(message) {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const content = document.getElementById('transcriptContent');
+
+            loading.style.display = 'none';
+            content.style.display = 'none';
+            error.style.display = 'block';
+            error.textContent = message;
+        }
+
+        function applyCustomStyles() {
+            // Aplicar estilos personalizados aos elementos do transcript
+            const messages = document.querySelectorAll('.message');
+            messages.forEach(message => {
+                message.style.marginBottom = '15px';
+                message.style.padding = '10px';
+                message.style.borderRadius = '5px';
+                message.style.background = '#f8f9fa';
+                message.style.borderLeft = '4px solid #7289da';
+            });
+
+            // Estilizar imagens
+            const images = document.querySelectorAll('img');
+            images.forEach(img => {
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                img.style.borderRadius = '5px';
+                img.style.margin = '10px 0';
+            });
+
+            // Estilizar links
+            const links = document.querySelectorAll('a');
+            links.forEach(link => {
+                link.style.color = '#7289da';
+                link.style.textDecoration = 'none';
+            });
+        }
+
+        // Permitir busca com Enter
+        document.getElementById('transcriptId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loadTranscript();
+            }
+        });
+
+        // Auto-focus no input
+        document.getElementById('transcriptId').focus();
+    </script>
+</body>
+</html> 
