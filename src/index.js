@@ -1,5 +1,21 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ChannelType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const {
+    Client,
+    GatewayIntentBits,
+    Partials,
+    Collection,
+    EmbedBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    SelectMenuBuilder,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    REST,
+    Routes,
+    ChannelType
+} = require('discord.js');
 const { createTranscript } = require('discord-html-transcripts');
 const { put, del } = require('@vercel/blob');
 const fs = require('fs');
@@ -310,12 +326,13 @@ async function handleButton(interaction) {
 
             // Enviar para o canal de logs específico do tipo de ticket
             const logChannel = await guild.channels.fetch(ticketType.log_channel_id).catch(() => null);
-            // Verificação de segurança: O canal existe e é um canal de texto?
-            if (logChannel && logChannel.isTextBased()) {
+            
+            // Verificação de segurança mais robusta pelo tipo do canal
+            if (logChannel && (logChannel.type === ChannelType.GuildText || logChannel.type === ChannelType.GuildAnnouncement)) {
                 const logEmbed = new EmbedBuilder().setTitle('🔒 Ticket Fechado').setDescription(`**Canal:** \`${channel.name}\`\n**Fechado por:** ${user}`).setColor('#ff0000');
                 await logChannel.send({ embeds: [logEmbed], components: [row] });
             } else {
-                console.log(`AVISO: Canal de log com ID ${ticketType.log_channel_id} não foi encontrado ou não é um canal de texto.`);
+                console.log(`AVISO: Canal de log com ID ${ticketType.log_channel_id} não foi encontrado ou não é um canal de texto. Tipo do canal: ${logChannel?.type}`);
             }
 
             // Enviar DM para o autor do ticket
