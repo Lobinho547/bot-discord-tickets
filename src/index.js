@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ChannelType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const { createTranscript } = require('discord-html-transcripts');
 const { put, del } = require('@vercel/blob');
 const fs = require('fs');
@@ -23,6 +23,7 @@ const writeTicketTypes = (data) => {
 };
 
 // --- Verificação de Variáveis de Ambiente ---
+// LOG_CHANNEL_ID foi removido, pois agora é por tipo de ticket.
 const requiredEnvVars = ['DISCORD_TOKEN', 'CLIENT_ID', 'GUILD_ID', 'BLOB_READ_WRITE_TOKEN', 'APP_URL'];
 const missingEnvVars = requiredEnvVars.filter(v => !process.env[v]);
 
@@ -59,15 +60,9 @@ async function registerCommands() {
         },
         {
             name: 'add-ticket-type',
-            description: 'Adiciona um novo tipo de ticket ao sistema.',
-            defaultMemberPermissions: PermissionFlagsBits.Administrator.toString(),
-            options: [
-                { name: 'name', type: 3, description: 'O nome do tipo de ticket (ex: Denúncia)', required: true },
-                { name: 'emoji', type: 3, description: 'O emoji que representará o ticket', required: true },
-                { name: 'category_id', type: 3, description: 'O ID da categoria do Discord onde os tickets serão criados', required: true },
-                { name: 'subject', type: 3, description: 'A mensagem que aparecerá dentro do ticket', required: true },
-                { name: 'staff_role_id', type: 3, description: 'O ID do cargo que poderá gerenciar estes tickets', required: true },
-            ]
+            description: 'Abre um formulário para adicionar um novo tipo de ticket.',
+            defaultMemberPermissions: PermissionFlagsBits.Administrator.toString()
+            // As opções foram removidas para dar lugar ao Modal
         }
     ];
 
@@ -84,6 +79,7 @@ async function registerCommands() {
 // --- Handlers de Interação ---
 client.on('interactionCreate', async (interaction) => {
     if (interaction.isCommand()) await handleCommand(interaction);
+    if (interaction.isModalSubmit()) await handleModalSubmit(interaction);
     if (interaction.isStringSelectMenu()) await handleSelectMenu(interaction);
     if (interaction.isButton()) await handleButton(interaction);
 });
@@ -119,24 +115,54 @@ async function handleCommand(interaction) {
     }
 
     if (commandName === 'add-ticket-type') {
-        const name = interaction.options.getString('name');
-        const emoji = interaction.options.getString('emoji');
-        const category_id = interaction.options.getString('category_id');
-        const subject = interaction.options.getString('subject');
-        const staff_role_id = interaction.options.getString('staff_role_id');
+        const modal = new ModalBuilder()
+            .setCustomId('add_ticket_type_modal')
+            .setTitle('Adicionar Novo Tipo de Ticket');
 
-        const ticketTypes = readTicketTypes();
-        const existingType = ticketTypes.find(t => t.name.toLowerCase() === name.toLowerCase());
+        // Cria os campos do formulário
+        const nameInput = new TextInputBuilder().setCustomId('ticket_name').setLabel("Nome do Ticket (ex: Denúncia)").setStyle(TextInputStyle.Short).setRequired(true);
+        const emojiInput = new TextInputBuilder().setCustomId('ticket_emoji').setLabel("Emoji do Ticket").setStyle(TextInputStyle.Short).setRequired(true);
+        const categoryInput = new TextInputBuilder().setCustomId('ticket_category_id').setLabel("ID da Categoria para criar os tickets").setStyle(TextInputStyle.Short).setRequired(true);
+        const staffInput = new TextInputBuilder().setCustomId('ticket_staff_role_id').setLabel("ID do Cargo Staff que gerenciará").setStyle(TextInputStyle.Short).setRequired(true);
+        const logChannelInput = new TextInputBuilder().setCustomId('ticket_log_channel_id').setLabel("ID do Canal de Logs para transcripts").setStyle(TextInputStyle.Short).setRequired(true);
+        const subjectInput = new TextInputBuilder().setCustomId('ticket_subject').setLabel("Assunto (Mensagem dentro do ticket)").setStyle(TextInputStyle.Paragraph).setRequired(true);
 
-        if (existingType) {
-            return interaction.reply({ content: `❌ Um tipo de ticket com o nome "${name}" já existe.`, ephemeral: true });
-        }
+        // Adiciona os campos ao modal em ActionRows
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(nameInput),
+            new ActionRowBuilder().addComponents(emojiInput),
+            new ActionRowBuilder().addComponents(categoryInput),
+            new ActionRowBuilder().addComponents(staffInput),
+            new ActionRowBuilder().addComponents(logChannelInput),
+            new ActionRowBuilder().addComponents(subjectInput)
+        );
 
-        ticketTypes.push({ name, emoji, category_id, subject, staff_role_id });
-        writeTicketTypes(ticketTypes);
-
-        await interaction.reply({ content: `✅ O tipo de ticket "${name}" foi adicionado com sucesso!`, ephemeral: true });
+        await interaction.showModal(modal);
     }
+}
+
+async function handleModalSubmit(interaction) {
+    if (interaction.customId !== 'add_ticket_type_modal') return;
+
+    // Extrai os dados do formulário
+    const name = interaction.fields.getTextInputValue('ticket_name');
+    const emoji = interaction.fields.getTextInputValue('ticket_emoji');
+    const category_id = interaction.fields.getTextInputValue('ticket_category_id');
+    const subject = interaction.fields.getTextInputValue('ticket_subject');
+    const staff_role_id = interaction.fields.getTextInputValue('ticket_staff_role_id');
+    const log_channel_id = interaction.fields.getTextInputValue('ticket_log_channel_id');
+
+    const ticketTypes = readTicketTypes();
+    const existingType = ticketTypes.find(t => t.name.toLowerCase() === name.toLowerCase());
+
+    if (existingType) {
+        return interaction.reply({ content: `❌ Um tipo de ticket com o nome "${name}" já existe.`, ephemeral: true });
+    }
+
+    ticketTypes.push({ name, emoji, category_id, subject, staff_role_id, log_channel_id });
+    writeTicketTypes(ticketTypes);
+
+    await interaction.reply({ content: `✅ O tipo de ticket "${name}" foi adicionado com sucesso! Use /setup-tickets para atualizar o painel.`, ephemeral: true });
 }
 
 async function handleSelectMenu(interaction) {
@@ -290,12 +316,15 @@ async function handleButton(interaction) {
             const appUrl = process.env.APP_URL.replace(/\/$/, "");
             const publicUrl = `${appUrl}/api/view?url=${encodeURIComponent(blobUrl)}`;
 
-            // Enviar para o canal de logs
-            const logEmbed = new EmbedBuilder().setTitle('🔒 Ticket Fechado').setDescription(`**Canal:** \`${channel.name}\`\n**Fechado por:** ${user}`).setColor('#ff0000');
-            const logButton = new ButtonBuilder().setLabel('Ver Transcript').setStyle(ButtonStyle.Link).setURL(publicUrl);
-            // Implementar canal de log vindo do ticketType
-            // const logChannel = await guild.channels.fetch(ticketType.log_channel_id); 
-            // await logChannel.send({ embeds: [logEmbed], components: [new ActionRowBuilder().addComponents(logButton)] });
+            // Enviar para o canal de logs específico do tipo de ticket
+            const logChannel = await guild.channels.fetch(ticketType.log_channel_id).catch(() => null);
+            if (logChannel) {
+                const logEmbed = new EmbedBuilder().setTitle('🔒 Ticket Fechado').setDescription(`**Canal:** \`${channel.name}\`\n**Fechado por:** ${user}`).setColor('#ff0000');
+                const logButton = new ButtonBuilder().setLabel('Ver Transcript').setStyle(ButtonStyle.Link).setURL(publicUrl);
+                await logChannel.send({ embeds: [logEmbed], components: [new ActionRowBuilder().addComponents(logButton)] });
+            } else {
+                console.log(`Canal de log com ID ${ticketType.log_channel_id} não encontrado.`);
+            }
 
             // Enviar DM para o autor do ticket
             const creator = await client.users.fetch(originalCreatorId);
